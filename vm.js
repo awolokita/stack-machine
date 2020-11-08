@@ -78,7 +78,7 @@ function makeCPU(program) {
     let instructionAddress = 0;
     let fault = undefined;
     const stack = makeStack();
-    const currentFrame = makeFrame();
+    const frames = makeStack([makeFrame()]);
 
     // Processor fault
     const raiseFault = x => {
@@ -108,10 +108,18 @@ function makeCPU(program) {
       fn();
     };
 
-    const stackOp = (op, minStackSize=0) => {
-      const fn = minStackSize <= stack.pointer() ? op : raiseFault.bind(this, 'STACK_OP');
+    const genericStackOp = (stack, errMsg, op, minStackSize=0) => {
+      const fn = minStackSize <= stack.pointer() ? op : raiseFault.bind(this, errMsg);
       fn();
     };
+
+    const stackOp = genericStackOp.bind(this, stack, 'STACK_OP');
+
+    // Frame helpers
+    const frameOp = genericStackOp.bind(this, frames, 'FRAME_OP');
+    const getCurrentFrame = () => frames.peek();
+    const pushNewFrame    = () => frames.push(makeFrame());
+    const discardFrame    = () => frameOp(frames.pop, 1);
 
     // Instructions
     // Processor
@@ -123,8 +131,8 @@ function makeCPU(program) {
     const instructionDup      = () => stackOp(stack.push.bind(this, stack.memory()[0]), 1);
 
     // Frame
-    const instructionLoad     = () => stack.push(currentFrame.get(getNextProgramWord()));
-    const instructionStore    = () => stackOp(() => currentFrame.set(getNextProgramWord(), stack.pop()), 1);
+    const instructionLoad     = () => stack.push(getCurrentFrame().get(getNextProgramWord()));
+    const instructionStore    = () => stackOp(() => getCurrentFrame().set(getNextProgramWord(), stack.pop()), 1);
 
     // Arithmetic
     const instructionAdd      = () => binaryOp((x, y) => x + y);
@@ -187,7 +195,7 @@ function makeCPU(program) {
       getStack: () => stack.memory(),
       getStackPointer: () => stack.pointer(),
       getProcessorFault: () => fault,
-      getCurrentFrame: () => currentFrame.memory(),
+      getCurrentFrame: () => getCurrentFrame().memory(),
     };
   };
 
