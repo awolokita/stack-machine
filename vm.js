@@ -227,7 +227,9 @@ function runTests() {
     testLoadVariableNotInitialized,
     testStoreVariable,
     testStoreAndLoadVariable,
-    testStoreNeedsOneItemOnTheStack
+    testStoreNeedsOneItemOnTheStack,
+    testIfElseStatement,
+    testWhileAccumulate
   ];
 
   tests.map(x => x());
@@ -616,6 +618,104 @@ function testStoreNeedsOneItemOnTheStack() {
   .run();
 }
 
+function testIfElseStatement() {
+  const program = assemble([
+    // $0 = 6
+    'PUSH 6',
+    'STORE 0',
+    
+    // $1 = 4
+    'PUSH 4',
+    'STORE 1',
+
+    // jump to else if not ($0 > $1)
+    'LOAD 0',
+    'LOAD 1',
+    'GT',
+    'JIF 21',
+
+    // else $2 = $1
+    'LOAD 1',
+    'STORE 2',
+    'JMP 25',
+
+    // if true
+    'LOAD 0',
+    'STORE 2',
+
+    // Done
+    'HALT'
+  ]);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, program.length)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackIsEmpty)
+  .assert(assertVariableValues, {0: 6, 1: 4, 2: 6})
+  .run();
+}
+
+function testWhileAccumulate() {
+  // const a = 6;
+  // const b = 4;
+  // let total = 0;
+  // while (b > 0) {
+  //   total += a;
+  //   b--;
+  // }
+  const program = assemble([
+    // Put HALT at the top to easily target it
+    // at the cost of a JMP and 2 bytes of code.
+    // Would not be needed with labels.
+    'JMP 3',
+    'HALT',
+
+    // $0 = 6
+    'PUSH 6',
+    'STORE 0',
+    
+    // $1 = 4
+    'PUSH 4',
+    'STORE 1',
+
+    // $2 = 0
+    'PUSH 0',
+    'STORE 2',
+
+    // jump to halt if $1 < 1
+    'LOAD 1',
+    'PUSH 1',
+    'GTE',
+    'NOT',
+    'JIF 2',
+
+    // $2 += $0
+    'LOAD 0',
+    'LOAD 2',
+    'ADD',
+    'STORE 2',
+
+    // $1--
+    'LOAD 1',
+    'PUSH 1',
+    'SUB',
+    'STORE 1',
+
+    // Jump to start of loop
+    'JMP 15',
+  ]);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, 3)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackIsEmpty)
+  .assert(assertVariableValues, {0: 6, 1: 0, 2: 4 * 6})
+  .run();
+}
+
+// Test generator
 function addAssertion(test, assertion, ...p) {
   return Object.assign(test, {assertions: [...test.assertions, assertion.bind(null, test.cpu, ...p)]});
 }
