@@ -218,7 +218,7 @@ function makeCPU(program) {
 
 // Test runner
 function runTests() {
-  const tests = [
+  [
     testEmptyProgramDoesNothing,
     testPushPushAndThenHalt,
     testAddTwoNumbers,
@@ -252,10 +252,12 @@ function runTests() {
     testStoreAndLoadVariable,
     testStoreNeedsOneItemOnTheStack,
     testIfElseStatement,
-    testWhileAccumulate
-  ];
-
-  tests.map(x => x());
+    testWhileAccumulate,
+    testCallNoArgNoReturn,
+    testCallNoArgReturnsValue,
+    testCallMultiplyReturnsValue
+  ]
+  .map(x => x());
 }
 
 // Test functions
