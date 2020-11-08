@@ -43,7 +43,8 @@ function assemble(asm) {
 
 // Function to create a VM that will run the input program
 function makeCPU(program) {
-  const validateProgram = () => program.length > 0;
+  const noneUndefined = xs => xs.reduce((b, x) => b && x !== undefined, true);
+  const validateProgram = () => program.length > 0 && noneUndefined(program);
 
   const makeStack = (memory=[]) => {
     return {
@@ -193,7 +194,11 @@ function makeCPU(program) {
 
     const step = () => {
       const fn = !isHalted ? () => instructionDecoder[getNextProgramWord()]() : () => {};
-      fn();
+      try {
+        fn();
+      } catch {
+        raiseFault(`RUNTIME: ${instructionAddress}`);
+      }
     };
 
     const run = () => {
@@ -256,7 +261,8 @@ function runTests() {
     testWhileAccumulate,
     testCallNoArgNoReturn,
     testCallNoArgReturnsValue,
-    testCallMultiplyReturnsValue
+    testCallMultiplyReturnsValue,
+    testMaxFunction
   ]
   .map(x => x());
 }
@@ -780,6 +786,34 @@ function testCallMultiplyReturnsValue() {
   .run();
 };
 
+function testMaxFunction() {
+  const program = assemble([
+    'PUSH 6',     // 0    1
+    'PUSH 4',     // 2    3
+    'CALL 7',     // 4    5
+    'HALT',       // 6
+    // Max(a, b)
+    'STORE 1',    // 7    8
+    'STORE 0',    // 9    10
+    'LOAD 0',     // 11   12
+    'LOAD 1',     // 13   14
+    'GTE',         // 15
+    'JIF 21',     // 16   17
+    'LOAD 1',     // 18   19
+    'RET',        // 20
+    'LOAD 0',     // 21   22
+    'RET'         // 23
+  ]);
+
+  CpuTest(program)
+  .assert(assertValidCpu)
+  .assert(assertInstructionAddress, 7)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackContains, [6])
+  .run();
+};
+
 // Test generator
 function addAssertion(test, assertion, ...p) {
   return Object.assign(test, {assertions: [...test.assertions, assertion.bind(null, test.cpu, ...p)]});
@@ -845,6 +879,10 @@ function assertStackContains(cpu, x) {
 
 function assertVariableValues(cpu, x) {
   assertTrue(objectSubsetEq(cpu.getCurrentFrame().memory(), x), "Variables not equal.");
+}
+
+function assertValidCpu(cpu) {
+  assertTrue(cpu.getProcessorFault() !== 'INVALID_CPU', "Invalid Cpu.")
 }
 
 runTests();
