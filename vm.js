@@ -17,6 +17,8 @@ const instructionSet = {
   JIF:    15,   //  If [SP] != 0, jump to instruction held in next program word
   LOAD:   16,   //  [SP] = FRAME[v]
   STORE:  17,   //  FRAME[v] = [SP]
+  CALL:   18,   //  Store return address to new frame and jump to instruction held in next program word
+  RET:    19,   //  Jump to return address in current frame, and discard current frame
 };
 
 // Very basic assembler
@@ -28,6 +30,7 @@ function mnemonic(x) {
     JIF:    () => [instructionSet.JIF,    parseInt(tokens[1])],
     LOAD:   () => [instructionSet.LOAD,   parseInt(tokens[1])],
     STORE:  () => [instructionSet.STORE,  parseInt(tokens[1])],
+    CALL:   () => [instructionSet.CALL,   parseInt(tokens[1])]
   };
 
   const fn = fns[tokens[0]] !== undefined ? fns[tokens[0]] : () => [instructionSet[x]];
@@ -118,7 +121,7 @@ function makeCPU(program) {
     // Frame helpers
     const frameOp = genericStackOp.bind(this, frames, 'FRAME_OP');
     const getCurrentFrame = () => frames.peek();
-    const pushNewFrame    = () => frames.push(makeFrame());
+    const pushNewFrame    = returnAddress => frames.push(makeFrame(returnAddress));
     const discardFrame    = () => frameOp(frames.pop, 1);
 
     // Instructions
@@ -153,6 +156,15 @@ function makeCPU(program) {
     // Flow control
     const instructionJmp      = () => instructionAddress = getNextProgramWord();
     const instructionJif      = () => stackOp(() => stack.pop() != 0 ? instructionAddress = getNextProgramWord() : getNextProgramWord(), 1);
+    const instructionCall     = () => {
+      const callAddress = getNextProgramWord();
+      pushNewFrame(instructionAddress);
+      instructionAddress = callAddress;
+    };
+    const instructionRet      = () => {
+      instructionAddress = getCurrentFrame().getReturnAddress();
+      frameOp(frames.pop, 1);
+    };
 
     // Instruction Decoder
     const instructionDecoder = {
@@ -174,6 +186,8 @@ function makeCPU(program) {
       [instructionSet['JIF']]:    instructionJif,
       [instructionSet['LOAD']]:   instructionLoad,
       [instructionSet['STORE']]:  instructionStore,
+      [instructionSet['CALL']]:   instructionCall,
+      [instructionSet['RET']]:    instructionRet,
     };
 
     const step = () => {
