@@ -715,6 +715,45 @@ function testWhileAccumulate() {
   .run();
 }
 
+function testCallNoArgNoReturn() {
+  const program = assemble([
+    'CALL 3', 'HALT', 'RET'
+  ]);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, 3)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackIsEmpty)
+  .run();
+};
+
+function testCallNoArgReturnsValue() {
+  const program = assemble([
+    'CALL 3', 'HALT', 'PUSH 7', 'RET'
+  ]);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, 3)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackContains, [7])
+  .run();
+};
+
+function testCallMultiplyReturnsValue() {
+  const program = assemble([
+    'PUSH 7', 'PUSH 6', 'CALL 7', 'HALT', 'MUL', 'RET'
+  ]);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, 7)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackContains, [7 * 6])
+  .run();
+};
+
 // Test generator
 function addAssertion(test, assertion, ...p) {
   return Object.assign(test, {assertions: [...test.assertions, assertion.bind(null, test.cpu, ...p)]});
