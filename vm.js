@@ -1,29 +1,33 @@
 const instructionSet = {
-  HALT: 0,    //  Stop machine execution
-  PUSH: 1,    //  Push the next program word onto the stack
-  POP:  2,    //  Pop the top of the stack
-  DUP:  3,    //  Duplicate the top of the stack
-  ADD:  4,    //  [SP] +  [SP+1]
-  SUB:  5,    //  [SP] -  [SP+1]
-  MUL:  6,    //  [SP] *  [SP+1]
-  DIV:  7,    //  [SP] /  [SP+1]
-  NOT:  8,    // ~[SP]
-  AND:  9,    //  [SP] && [SP+1]
-  OR:   10,   //  [SP] || [SP+1]
-  EQ:   11,   //  [SP] == [SP+1]
-  GT:   12,   //  [SP] <  [SP+1]
-  GTE:  13,   //  [SP] <= [SP+1]
-  JMP:  14,   //  Jump to instruction in held next program word
-  JIF:  15    //  If [SP] != 0, jump to instruction held in next program word
+  HALT:   0,    //  Stop machine execution
+  PUSH:   1,    //  Push the next program word onto the stack
+  POP:    2,    //  Pop the top of the stack
+  DUP:    3,    //  Duplicate the top of the stack
+  ADD:    4,    //  [SP] +  [SP+1]
+  SUB:    5,    //  [SP] -  [SP+1]
+  MUL:    6,    //  [SP] *  [SP+1]
+  DIV:    7,    //  [SP] /  [SP+1]
+  NOT:    8,    // ~[SP]
+  AND:    9,    //  [SP] && [SP+1]
+  OR:     10,   //  [SP] || [SP+1]
+  EQ:     11,   //  [SP] == [SP+1]
+  GT:     12,   //  [SP] <  [SP+1]
+  GTE:    13,   //  [SP] <= [SP+1]
+  JMP:    14,   //  Jump to instruction in held next program word
+  JIF:    15,   //  If [SP] != 0, jump to instruction held in next program word
+  LOAD:   16,   //  [SP] = FRAME[v]
+  STORE:  17,   //  FRAME[v] = [SP]
 };
 
 // Very basic assembler
 function mnemonic(x) {
   const tokens = x.match(/\S+/g);
   const fns = {
-    PUSH: () => [instructionSet.PUSH, parseInt(tokens[1])],
-    JMP:  () => [instructionSet.JMP, parseInt(tokens[1])],
-    JIF:  () => [instructionSet.JIF, parseInt(tokens[1])],
+    PUSH:   () => [instructionSet.PUSH,   parseInt(tokens[1])],
+    JMP:    () => [instructionSet.JMP,    parseInt(tokens[1])],
+    JIF:    () => [instructionSet.JIF,    parseInt(tokens[1])],
+    LOAD:   () => [instructionSet.LOAD,   parseInt(tokens[1])],
+    STORE:  () => [instructionSet.STORE,  parseInt(tokens[1])],
   };
 
   const fn = fns[tokens[0]] !== undefined ? fns[tokens[0]] : () => [instructionSet[x]];
@@ -49,6 +53,15 @@ function makeCPU(program) {
     };
   };
 
+  const makeFrame = () => {
+    const memory = {};
+    return {
+      memory:   ()      => memory,
+      get:      k       => memory[k] !== undefined ? memory[k] : 0,
+      set:      (k, v)  => memory[k] = v,
+    };
+  };
+
   const badCPU = {
     run: () => undefined,
     step: () => undefined,
@@ -64,6 +77,7 @@ function makeCPU(program) {
     let instructionAddress = 0;
     let fault = undefined;
     const stack = makeStack();
+    const currentFrame = makeFrame();
 
     // Processor fault
     const raiseFault = x => {
@@ -107,6 +121,10 @@ function makeCPU(program) {
     const instructionPop      = () => stackOp(stack.pop, 1);
     const instructionDup      = () => stackOp(stack.push.bind(this, stack.memory()[0]), 1);
 
+    // Frame
+    const instructionLoad     = () => stack.push(currentFrame.get(getNextProgramWord()));
+    const instructionStore    = () => stackOp(() => currentFrame.set(getNextProgramWord(), stack.pop()), 1);
+
     // Arithmetic
     const instructionAdd      = () => binaryOp((x, y) => x + y);
     const instructionSub      = () => binaryOp((x, y) => x - y);
@@ -129,22 +147,24 @@ function makeCPU(program) {
 
     // Instruction Decoder
     const instructionDecoder = {
-      [instructionSet['HALT']]: instructionHaltCpu,
-      [instructionSet['PUSH']]: instructionPush,
-      [instructionSet['POP']]:  instructionPop,
-      [instructionSet['DUP']]:  instructionDup,
-      [instructionSet['ADD']]:  instructionAdd,
-      [instructionSet['SUB']]:  instructionSub,
-      [instructionSet['MUL']]:  instructionMul,
-      [instructionSet['DIV']]:  instructionDiv,
-      [instructionSet['NOT']]:  instructionNot,
-      [instructionSet['AND']]:  instructionAnd,
-      [instructionSet['OR']]:   instructionOr,
-      [instructionSet['EQ']]:   instructionEq,
-      [instructionSet['GT']]:   instructionGt,
-      [instructionSet['GTE']]:  instructionGte,
-      [instructionSet['JMP']]:  instructionJmp,
-      [instructionSet['JIF']]:  instructionJif,
+      [instructionSet['HALT']]:   instructionHaltCpu,
+      [instructionSet['PUSH']]:   instructionPush,
+      [instructionSet['POP']]:    instructionPop,
+      [instructionSet['DUP']]:    instructionDup,
+      [instructionSet['ADD']]:    instructionAdd,
+      [instructionSet['SUB']]:    instructionSub,
+      [instructionSet['MUL']]:    instructionMul,
+      [instructionSet['DIV']]:    instructionDiv,
+      [instructionSet['NOT']]:    instructionNot,
+      [instructionSet['AND']]:    instructionAnd,
+      [instructionSet['OR']]:     instructionOr,
+      [instructionSet['EQ']]:     instructionEq,
+      [instructionSet['GT']]:     instructionGt,
+      [instructionSet['GTE']]:    instructionGte,
+      [instructionSet['JMP']]:    instructionJmp,
+      [instructionSet['JIF']]:    instructionJif,
+      [instructionSet['LOAD']]:   instructionLoad,
+      [instructionSet['STORE']]:  instructionStore,
     };
 
     const step = () => {
@@ -166,6 +186,7 @@ function makeCPU(program) {
       getStack: () => stack.memory(),
       getStackPointer: () => stack.pointer(),
       getProcessorFault: () => fault,
+      getCurrentFrame: () => currentFrame.memory(),
     };
   };
 
@@ -201,7 +222,12 @@ function runTests() {
     testIsGteOneWhenGt,
     testIsGteZeroWhenLt,
     testUnconditionalJump,
-    testConditionalJump
+    testConditionalJump,
+    testLoadVariableNotInitialized,
+    testLoadVariableNotInitialized,
+    testStoreVariable,
+    testStoreAndLoadVariable,
+    testStoreNeedsOneItemOnTheStack
   ];
 
   tests.map(x => x());
@@ -545,9 +571,75 @@ function testConditionalJump() {
   assertNoCpuFault(cpu);
 };
 
+function testLoadVariableNotInitialized() {
+  const program = assemble(['LOAD 0', 'HALT']);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, program.length)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackContains, [0])
+  .run();
+}
+
+function testStoreVariable() {
+  const program = assemble(['PUSH 42', 'STORE 0', 'HALT']);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, program.length)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackIsEmpty)
+  .assert(assertVariableValues, {0: 42})
+  .run();
+}
+
+function testStoreAndLoadVariable() {
+  const program = assemble(['PUSH 42', 'STORE 0', 'LOAD 0', 'HALT']);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, program.length)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackContains, [42])
+  .assert(assertVariableValues, {0: 42})
+  .run();
+}
+
+function testStoreNeedsOneItemOnTheStack() {
+  const program = assemble(['STORE 0', 'HALT']);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, 1)
+  .assert(assertCpuHalted)
+  .assert(assertCpuFault)
+  .run();
+}
+
+function addAssertion(test, assertion, ...p) {
+  return Object.assign(test, {assertions: [...test.assertions, assertion.bind(null, test.cpu, ...p)]});
+}
+
+function runTest(test) {
+  test.cpu.run();
+  test.assertions.map(f => f());
+}
+
+function CpuTest(program) {
+  test = {
+    cpu: makeCPU(program),
+    assertions: [],
+  };
+  test.assert = addAssertion.bind(null, test);
+  test.run = runTest.bind(null, test);
+  return test;
+}
+
 // Assert functions
 function assertEquals(x, y, errMsg) {
-  console.assert(x == y, errMsg);
+  console.assert(x == y,
+    `${errMsg}
+    ${Error().stack}`);
 }
 
 function assertTrue(x, errMsg) {
@@ -578,8 +670,16 @@ function arrayEq(x, y) {
   return x.reduce((a, e, i) => a && y[i] == e, true);
 }
 
+function objectSubsetEq(x, sub) {
+  return Object.keys(sub).reduce((b, k) => b && x[k] == sub[k], true);
+}
+
 function assertStackContains(cpu, x) {
   assertTrue(arrayEq(cpu.getStack(), x), "Stack not equal.");
+}
+
+function assertVariableValues(cpu, x) {
+  assertTrue(objectSubsetEq(cpu.getCurrentFrame(), x), "Variables not equal.");
 }
 
 runTests();
