@@ -13,7 +13,7 @@ const instructionSet = {
   EQ:     11,   //  [SP] == [SP+1]
   GT:     12,   //  [SP] <  [SP+1]
   GTE:    13,   //  [SP] <= [SP+1]
-  JMP:    14,   //  Jump to instruction in held next program word
+  JMP:    14,   //  Jump to instruction held in next program word
   JIF:    15,   //  If [SP] != 0, jump to instruction held in next program word
   LOAD:   16,   //  [SP] = FRAME[v]
   STORE:  17,   //  FRAME[v] = [SP]
