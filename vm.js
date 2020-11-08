@@ -13,10 +13,12 @@ const instructionSet = {
   EQ:     11,   //  [SP] == [SP+1]
   GT:     12,   //  [SP] <  [SP+1]
   GTE:    13,   //  [SP] <= [SP+1]
-  JMP:    14,   //  Jump to instruction in held next program word
+  JMP:    14,   //  Jump to instruction held in next program word
   JIF:    15,   //  If [SP] != 0, jump to instruction held in next program word
   LOAD:   16,   //  [SP] = FRAME[v]
   STORE:  17,   //  FRAME[v] = [SP]
+  CALL:   18,   //  Store return address to new frame and jump to instruction held in next program word
+  RET:    19,   //  Jump to return address in current frame, and discard current frame
 };
 
 // Very basic assembler
@@ -28,6 +30,7 @@ function mnemonic(x) {
     JIF:    () => [instructionSet.JIF,    parseInt(tokens[1])],
     LOAD:   () => [instructionSet.LOAD,   parseInt(tokens[1])],
     STORE:  () => [instructionSet.STORE,  parseInt(tokens[1])],
+    CALL:   () => [instructionSet.CALL,   parseInt(tokens[1])]
   };
 
   const fn = fns[tokens[0]] !== undefined ? fns[tokens[0]] : () => [instructionSet[x]];
@@ -40,25 +43,27 @@ function assemble(asm) {
 
 // Function to create a VM that will run the input program
 function makeCPU(program) {
-  const validateProgram = () => program.length > 0;
+  const noneUndefined = xs => xs.reduce((b, x) => b && x !== undefined, true);
+  const validateProgram = () => program.length > 0 && noneUndefined(program);
 
-    // Todo: We could add a size constraint
-  const makeStack = () => {
-    const memory = [];
+  const makeStack = (memory=[]) => {
     return {
       pointer:  ()  => memory.length,
       memory:   ()  => memory,
       push:     x   => memory.unshift(x),
       pop:      ()  => memory.shift(),
+      peek:     ()  => memory[0],
     };
   };
 
-  const makeFrame = () => {
+  const makeFrame = (returnAddress) => {
     const memory = {};
     return {
-      memory:   ()      => memory,
-      get:      k       => memory[k] !== undefined ? memory[k] : 0,
-      set:      (k, v)  => memory[k] = v,
+      memory:           ()      => memory,
+      get:              k       => memory[k] !== undefined ? memory[k] : 0,
+      set:              (k, v)  => memory[k] = v,
+      getReturnAddress: ()      => returnAddress,
+      setReturnAddress: v       => returnAddress = v,
     };
   };
 
@@ -67,6 +72,7 @@ function makeCPU(program) {
     step: () => undefined,
     getInstructionAddress: () => 0,
     isHalted: () => true,
+    getProcessorFault: () => 'INVALID_CPU',
     getStack: () => [],
     getStackPointer: () => 0,
   };
@@ -77,7 +83,7 @@ function makeCPU(program) {
     let instructionAddress = 0;
     let fault = undefined;
     const stack = makeStack();
-    const currentFrame = makeFrame();
+    const frames = makeStack([makeFrame()]);
 
     // Processor fault
     const raiseFault = x => {
@@ -107,10 +113,18 @@ function makeCPU(program) {
       fn();
     };
 
-    const stackOp = (op, minStackSize=0) => {
-      const fn = minStackSize <= stack.pointer() ? op : raiseFault.bind(this, 'STACK_OP');
+    const genericStackOp = (stack, errMsg, op, minStackSize=0) => {
+      const fn = minStackSize <= stack.pointer() ? op : raiseFault.bind(this, errMsg);
       fn();
     };
+
+    const stackOp = genericStackOp.bind(this, stack, 'STACK_OP');
+
+    // Frame helpers
+    const frameOp = genericStackOp.bind(this, frames, 'FRAME_OP');
+    const getCurrentFrame = frames.peek;
+    const pushNewFrame    = returnAddress => frames.push(makeFrame(returnAddress));
+    const discardFrame    = () => frameOp(frames.pop, 1);
 
     // Instructions
     // Processor
@@ -122,8 +136,8 @@ function makeCPU(program) {
     const instructionDup      = () => stackOp(stack.push.bind(this, stack.memory()[0]), 1);
 
     // Frame
-    const instructionLoad     = () => stack.push(currentFrame.get(getNextProgramWord()));
-    const instructionStore    = () => stackOp(() => currentFrame.set(getNextProgramWord(), stack.pop()), 1);
+    const instructionLoad     = () => stack.push(getCurrentFrame().get(getNextProgramWord()));
+    const instructionStore    = () => stackOp(() => getCurrentFrame().set(getNextProgramWord(), stack.pop()), 1);
 
     // Arithmetic
     const instructionAdd      = () => binaryOp((x, y) => x + y);
@@ -144,6 +158,15 @@ function makeCPU(program) {
     // Flow control
     const instructionJmp      = () => instructionAddress = getNextProgramWord();
     const instructionJif      = () => stackOp(() => stack.pop() != 0 ? instructionAddress = getNextProgramWord() : getNextProgramWord(), 1);
+    const instructionCall     = () => {
+      const callAddress = getNextProgramWord();
+      pushNewFrame(instructionAddress);
+      instructionAddress = callAddress;
+    };
+    const instructionRet      = () => {
+      instructionAddress = getCurrentFrame().getReturnAddress();
+      discardFrame();
+    };
 
     // Instruction Decoder
     const instructionDecoder = {
@@ -165,11 +188,17 @@ function makeCPU(program) {
       [instructionSet['JIF']]:    instructionJif,
       [instructionSet['LOAD']]:   instructionLoad,
       [instructionSet['STORE']]:  instructionStore,
+      [instructionSet['CALL']]:   instructionCall,
+      [instructionSet['RET']]:    instructionRet,
     };
 
     const step = () => {
       const fn = !isHalted ? () => instructionDecoder[getNextProgramWord()]() : () => {};
-      fn();
+      try {
+        fn();
+      } catch {
+        raiseFault(`RUNTIME: ${instructionAddress}`);
+      }
     };
 
     const run = () => {
@@ -186,7 +215,7 @@ function makeCPU(program) {
       getStack: () => stack.memory(),
       getStackPointer: () => stack.pointer(),
       getProcessorFault: () => fault,
-      getCurrentFrame: () => currentFrame.memory(),
+      getCurrentFrame: getCurrentFrame,
     };
   };
 
@@ -195,7 +224,7 @@ function makeCPU(program) {
 
 // Test runner
 function runTests() {
-  const tests = [
+  [
     testEmptyProgramDoesNothing,
     testPushPushAndThenHalt,
     testAddTwoNumbers,
@@ -229,10 +258,13 @@ function runTests() {
     testStoreAndLoadVariable,
     testStoreNeedsOneItemOnTheStack,
     testIfElseStatement,
-    testWhileAccumulate
-  ];
-
-  tests.map(x => x());
+    testWhileAccumulate,
+    testCallNoArgNoReturn,
+    testCallNoArgReturnsValue,
+    testCallMultiplyReturnsValue,
+    testMaxFunction
+  ]
+  .map(x => x());
 }
 
 // Test functions
@@ -715,6 +747,73 @@ function testWhileAccumulate() {
   .run();
 }
 
+function testCallNoArgNoReturn() {
+  const program = assemble([
+    'CALL 3', 'HALT', 'RET'
+  ]);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, 3)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackIsEmpty)
+  .run();
+};
+
+function testCallNoArgReturnsValue() {
+  const program = assemble([
+    'CALL 3', 'HALT', 'PUSH 7', 'RET'
+  ]);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, 3)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackContains, [7])
+  .run();
+};
+
+function testCallMultiplyReturnsValue() {
+  const program = assemble([
+    'PUSH 7', 'PUSH 6', 'CALL 7', 'HALT', 'MUL', 'RET'
+  ]);
+
+  CpuTest(program)
+  .assert(assertInstructionAddress, 7)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackContains, [7 * 6])
+  .run();
+};
+
+function testMaxFunction() {
+  const program = assemble([
+    'PUSH 6',     // 0    1
+    'PUSH 4',     // 2    3
+    'CALL 7',     // 4    5
+    'HALT',       // 6
+    // Max(a, b)
+    'STORE 1',    // 7    8
+    'STORE 0',    // 9    10
+    'LOAD 0',     // 11   12
+    'LOAD 1',     // 13   14
+    'GTE',         // 15
+    'JIF 21',     // 16   17
+    'LOAD 1',     // 18   19
+    'RET',        // 20
+    'LOAD 0',     // 21   22
+    'RET'         // 23
+  ]);
+
+  CpuTest(program)
+  .assert(assertValidCpu)
+  .assert(assertInstructionAddress, 7)
+  .assert(assertCpuHalted)
+  .assert(assertNoCpuFault)
+  .assert(assertStackContains, [6])
+  .run();
+};
+
 // Test generator
 function addAssertion(test, assertion, ...p) {
   return Object.assign(test, {assertions: [...test.assertions, assertion.bind(null, test.cpu, ...p)]});
@@ -779,7 +878,11 @@ function assertStackContains(cpu, x) {
 }
 
 function assertVariableValues(cpu, x) {
-  assertTrue(objectSubsetEq(cpu.getCurrentFrame(), x), "Variables not equal.");
+  assertTrue(objectSubsetEq(cpu.getCurrentFrame().memory(), x), "Variables not equal.");
+}
+
+function assertValidCpu(cpu) {
+  assertTrue(cpu.getProcessorFault() !== 'INVALID_CPU', "Invalid Cpu.")
 }
 
 runTests();
