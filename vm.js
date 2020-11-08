@@ -42,23 +42,24 @@ function assemble(asm) {
 function makeCPU(program) {
   const validateProgram = () => program.length > 0;
 
-    // Todo: We could add a size constraint
-  const makeStack = () => {
-    const memory = [];
+  const makeStack = (memory=[]) => {
     return {
       pointer:  ()  => memory.length,
       memory:   ()  => memory,
       push:     x   => memory.unshift(x),
       pop:      ()  => memory.shift(),
+      peek:     ()  => memory[0],
     };
   };
 
-  const makeFrame = () => {
+  const makeFrame = (returnAddress) => {
     const memory = {};
     return {
-      memory:   ()      => memory,
-      get:      k       => memory[k] !== undefined ? memory[k] : 0,
-      set:      (k, v)  => memory[k] = v,
+      memory:           ()      => memory,
+      get:              k       => memory[k] !== undefined ? memory[k] : 0,
+      set:              (k, v)  => memory[k] = v,
+      getReturnAddress: ()      => returnAddress,
+      setReturnAddress: v       => returnAddress = v,
     };
   };
 
