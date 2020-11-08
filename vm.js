@@ -71,6 +71,7 @@ function makeCPU(program) {
     step: () => undefined,
     getInstructionAddress: () => 0,
     isHalted: () => true,
+    getProcessorFault: () => 'INVALID_CPU',
     getStack: () => [],
     getStackPointer: () => 0,
   };
@@ -120,7 +121,7 @@ function makeCPU(program) {
 
     // Frame helpers
     const frameOp = genericStackOp.bind(this, frames, 'FRAME_OP');
-    const getCurrentFrame = () => frames.peek();
+    const getCurrentFrame = frames.peek;
     const pushNewFrame    = returnAddress => frames.push(makeFrame(returnAddress));
     const discardFrame    = () => frameOp(frames.pop, 1);
 
@@ -163,7 +164,7 @@ function makeCPU(program) {
     };
     const instructionRet      = () => {
       instructionAddress = getCurrentFrame().getReturnAddress();
-      frameOp(frames.pop, 1);
+      discardFrame();
     };
 
     // Instruction Decoder
@@ -209,7 +210,7 @@ function makeCPU(program) {
       getStack: () => stack.memory(),
       getStackPointer: () => stack.pointer(),
       getProcessorFault: () => fault,
-      getCurrentFrame: () => getCurrentFrame().memory(),
+      getCurrentFrame: getCurrentFrame,
     };
   };
 
@@ -843,7 +844,7 @@ function assertStackContains(cpu, x) {
 }
 
 function assertVariableValues(cpu, x) {
-  assertTrue(objectSubsetEq(cpu.getCurrentFrame(), x), "Variables not equal.");
+  assertTrue(objectSubsetEq(cpu.getCurrentFrame().memory(), x), "Variables not equal.");
 }
 
 runTests();
